@@ -29,7 +29,7 @@ This tool is a string generator based on regex pattern inspired by [pemistahl/gr
 
 usage: src/cli.py [{gen,check,match}] [-h] [-p PATTERN] [-c COUNT] [-l LIMIT] [-t TIMEOUT] [-i INTERVAL] [-s {natural,asc,desc,random}] [-d] [-o OUTPUT_PATH]
 
-Generate URLs with specified regex pattern and check their validity.
+Generate strings with specified regex pattern and check their validity.
 
 positional arguments:
   {gen,check,match}     Mode: gen, check, or match (default: gen)
