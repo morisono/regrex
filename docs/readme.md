@@ -9,7 +9,7 @@ This tool is a string generator based on regex pattern inspired by [pemistahl/gr
 ## Features
 
 - Generate strings based on regex pattern
-- Check if generated url are valid or not by accessing them in parallel
+- Check if generated line are valid or not by url accessing them in parallel
 - Match strings with regex pattern (WIP)
 
 ## Getting Started
@@ -41,7 +41,7 @@ options:
   -p PATTERN, --pattern PATTERN
                         Regular expression pattern for generating random strings
   -c COUNT, --count COUNT
-                        Max number of urls (default: 10)
+                        Max number of lines (default: 10)
   -l LIMIT, --limit LIMIT
                         Max string length range limit (default: 1) [WIP: only works in random]
   -t TIMEOUT, --timeout TIMEOUT
