@@ -11,6 +11,7 @@ import tempfile
 import http.client
 from tqdm import tqdm
 from datetime import datetime
+from natsort import natsorted
 import concurrent.futures
 import aiofiles
 import aiohttp
@@ -45,38 +46,64 @@ class Interface:
         else:
             return existing_data
 
-async def generate_ord(p, limit):
-    print(f'Count: {exrex.count(p, limit=limit)}')
-    print(f'Range limit: {limit}')
-    return '\n'.join(exrex.generate(p, limit=limit))
-
-async def generate_rand(p, limit):
+async def generate_line(p, limit):
     return exrex.getone(p, limit=limit)
 
-async def generate_urls(p, tmpf, count, limit, sort, interval):
+async def sort_lines(lines, sort):
+    for sort_type in sort:
+        if sort_type == 'asc':
+            sorted_lines = sorted(lines)
+        elif sort_type == 'desc':
+            sorted_lines = sorted(lines, reverse=True)
+        elif sort_type == 'natural':
+            sorted_lines = natsorted(lines)
+
+    return sorted_lines
+
+async def process_regex(p, tmpf, count, limit, sort, interval, disable_progress_bar=None, output_path=None):
     try:
-        async with aiofiles.open(tmpf, "w") as file:
-            if sort == ['natural']:
-                url = await generate_ord(p, limit)
-                await file.write(url + "\n")
-            else:
-                for _ in tqdm(range(count), desc="Generating"):
-                    try:
-                        url = await generate_rand(p, limit)
-                        await file.write(url + "\n")
-                    except Exception as e:
-                        print(f"Error generating URL: {e}")
+        lines = []
+        progress_bar = tqdm(range(count), desc="Generating", disable=disable_progress_bar)
+        for _ in progress_bar:
+            try:
+                url = await generate_line(p, limit)
+                lines.append(url)
+                await asyncio.sleep(interval)
+            except Exception as e:
+                sys.stdout.write(f"[!]: {e}")
+        if sort:
+            progress_bar = tqdm(range(len(lines) * len(sort)), desc="Sorting", disable=disable_progress_bar)
+            for _ in progress_bar:
+                try:
+                    sorted_lines = await sort_lines(lines, sort)
                     await asyncio.sleep(interval)
+                except Exception as e:
+                    sys.stdout.write(f"[!]: {e}")
+
+        if output_path:
+            with open(output_path, "w") as file:
+                for url in sorted_lines:
+                    file.write(url + "\n")
+            sys.stdout.write(f"{output_path}")
+        else:
+            async with aiofiles.open(tmpf, "w") as file:
+                for url in sorted_lines:
+                    await file.write(url + "\n")
+
+            with open(tmpf, "r") as file:
+                lines = file.read()
+                sys.stdout.write(lines)
+
     except KeyboardInterrupt:
-        print("\nGeneration interrupted. Partial results saved.")
+        sys.stdout.write("\nGeneration interrupted. Partial results saved.")
     except Exception as e:
-        print(f"Error during generation: {e}")
+        sys.stdout.write(f"[!]: {e}")
 
 async def check_valid_url(url, log_dict, interval, timeout, content_subdir, download, i, pbar):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.head(url, timeout=timeout, follow_redirects=True)
-            print(f"[{response.status_code}]: {url}", end="\r")
+            sys.stdout.write(f"[{response.status_code}]: {url}", end="\r")
 
             log_entry = {
                 "status_code": response.status_code,
@@ -97,14 +124,14 @@ async def check_valid_url(url, log_dict, interval, timeout, content_subdir, down
                     await download_contents(url, content_subdir)
 
     except httpx.RequestError as e:
-        print(f"Error while checking {url}: {e}", end="\r")
+        sys.stdout.write(f"Error while checking {url}: {e}", end="\r")
         log_entry = {
             "error": f"Error while checking {url}: {e}",
             "url": url
         }
         log_dict[i] = log_entry
     except Exception as e:
-        print(f"Unknown error while checking {url}: {e}", end="\r")
+        sys.stdout.write(f"Unknown error while checking {url}: {e}", end="\r")
         log_entry = {
             "error": f"Unknown error while checking {url}: {e}",
             "url": url
@@ -131,34 +158,33 @@ async def check_valid_urls_parallel(urls, log_file_path, interval, timeout, cont
         try:
             await asyncio.gather(*tasks)
         except Exception as e:
-            print(f"An error occurred in check_valid_urls_parallel: {e}")
+            sys.stdout.write(f"An error occurred in check_valid_urls_parallel: {e}")
         finally:
             pbar.close()
             await Interface.write_yaml(log_dict, log_file_path)
-            print(f'Saved log at: {log_file_path}')
-            print(f'Saved contents at: {content_subdir}')
+            sys.stdout.write(f'Saved log at: {log_file_path}')
+            sys.stdout.write(f'Saved contents at: {content_subdir}')
 
 def main():
     parser = argparse.ArgumentParser(description="Generate URLs with specified regex pattern and check their validity.")
-    parser.usage = f"{sys.argv[0]} " + "[{gen,check,match}]  [-h] [-o OUTPUT_PATH] [-p PATTERN] [-c COUNT] [-l LIMIT] [-t TIMEOUT] [-I INTERVAL] [-s {natural,asc,desc,random}] [-d] [input_path [input_path ...]]"
-    parser.add_argument('input_path', nargs='*', help='Input path for URLs. If not provided, read from stdin.')
+    parser.usage = f"{sys.argv[0]} " + "[{gen,check,match}] [-h] [-p PATTERN] [-c COUNT] [-l LIMIT] [-t TIMEOUT] [-i INTERVAL] [-s {natural,asc,desc,random}] [-d] [-o OUTPUT_PATH]"
     parser.add_argument("mode", nargs=1, choices=["gen", "check", "match"], default=["gen"], help="Mode: gen, check, or match (default: gen)")
     parser.add_argument("-o", "--output_path", default=None, help="Output path")
     parser.add_argument("-p", "--pattern", default="https://www\.example\.com/\d{7}", help="Regular expression pattern for generating random strings")
-    parser.add_argument("-c", "--count", type=int, default=10, help="Max number of urls (default: 10) [WIP: only works in random]")
-    parser.add_argument("-l", "--limit", type=int, default=1, help="Max string length range limit (default: 1)")
+    parser.add_argument("-c", "--count", type=int, default=10, help="Max number of urls (default: 10)")
+    parser.add_argument("-l", "--limit", type=int, default=1, help="Max string length range limit (default: 1) [WIP: only works in random]")
     parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for HTTP requests (default: 5 seconds)")
-    parser.add_argument("-I", "--interval", type=int, default=1, help="Interval between requests (default: 1 second)")
+    parser.add_argument("-i", "--interval", type=int, default=1, help="Interval between requests (default: 1 second)")
     parser.add_argument("-s", "--sort", nargs="+", choices=["natural", "asc", "desc","random"], default=["random"], help="Sort: generate, asc, or desc (default: random)")
     parser.add_argument("-d", "--download", action="store_true", help="Enable downloading contents for valid URLs (default: False)")
+    parser.add_argument('--disable-progress-bar', action='store_true', help="Disable the progress bar.")
 
     args = parser.parse_args()
     ts, temp_dir = Interface.get_tempdir()
     temp_file = f'{temp_dir}/{ts}'
 
     if "gen" in args.mode:
-        asyncio.run(generate_urls(args.pattern, temp_file, args.count, args.limit, args.sort, args.interval))
-        print(f"Generated URLs are saved to: {temp_file}")
+        asyncio.run(process_regex(args.pattern, temp_file, args.count, args.limit, args.sort, args.interval, args.disable_progress_bar, args.output_path))
 
     if "check" in args.mode:
         log_dir = 'log'
@@ -168,7 +194,6 @@ def main():
         log_file = f"{log_dir}/{ts}.yaml"
         content_subdir = f"{content_dir}/{ts}"
         if args.input_path:
-
             urls = args.input_path
         else:
             urls = sys.stdin.read().splitlines()
