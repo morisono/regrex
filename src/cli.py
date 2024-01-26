@@ -52,13 +52,13 @@ async def generate_line(p, limit):
 async def sort_lines(lines, sort):
     for sort_type in sort:
         if sort_type == 'asc':
-            sorted_lines = sorted(lines)
+            lines = sorted(lines)
         elif sort_type == 'desc':
-            sorted_lines = sorted(lines, reverse=True)
+            lines = sorted(lines, reverse=True)
         elif sort_type == 'natural':
-            sorted_lines = natsorted(lines)
+            lines = natsorted(lines)
 
-    return sorted_lines
+    return lines
 
 async def process_regex(p, tmpf, count, limit, sort, interval, disable_progress_bar=None, output_path=None):
     try:
@@ -75,19 +75,19 @@ async def process_regex(p, tmpf, count, limit, sort, interval, disable_progress_
             progress_bar = tqdm(range(len(lines) * len(sort)), desc="Sorting", disable=disable_progress_bar)
             for _ in progress_bar:
                 try:
-                    sorted_lines = await sort_lines(lines, sort)
+                    lines = await sort_lines(lines, sort)
                     await asyncio.sleep(interval)
                 except Exception as e:
                     sys.stdout.write(f"[!]: {e}")
 
         if output_path:
             with open(output_path, "w") as file:
-                for url in sorted_lines:
+                for url in lines:
                     file.write(url + "\n")
             sys.stdout.write(f"{output_path}")
         else:
             async with aiofiles.open(tmpf, "w") as file:
-                for url in sorted_lines:
+                for url in lines:
                     await file.write(url + "\n")
 
             with open(tmpf, "r") as file:
