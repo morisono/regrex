@@ -2,9 +2,12 @@
 
 # ^regrex$
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+
 </div>
 
-This tool is a string generator based on regex pattern inspired by [pemistahl/grex](https://github.com/pemistahl/grex).
+This tool is a string generator based on regex pattern inspired by [pemistahl/grex](https://github.com/pemistahl/grex), fueled by [exrex](https://github.com/asciimoo/exrex).
 
 ## Features
 
@@ -54,6 +57,7 @@ options:
   --disable-progress-bar
                         Disable the progress bar.
 ```
+
 
 ## Contribution
 
